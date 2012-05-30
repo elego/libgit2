@@ -45,6 +45,35 @@ GIT_EXTERN(int) git_object_lookup(
 		git_otype type);
 
 /**
+ * Same as git_object_lookup() but with an ODB instead of a repo
+ */
+GIT_EXTERN(int) git_object_lookup_odb(
+		git_object **object,
+		git_odb *odb,
+		const git_oid *id,
+		git_otype type);
+
+
+/**
+ * Lookup a reference to one of the objects in an odb
+ *
+ * This is the same as git_object_lookup_prefix() but it allows you to
+ * query an ODB directory, without having to use a repository.
+ *
+ * @param object pointer to the looked-up object
+ * @param odb the odb in which to look up the object
+ * @param id the unique identifier for the object
+ * @param type the type of the object
+ * @return 0 or GIT_ENOTFOUND;
+ */
+GIT_EXTERN(int) git_object_lookup_odb_prefix(
+		git_object **object_out,
+		git_odb *odb,
+		const git_oid *id,
+		unsigned int len,
+		git_otype type);
+
+/**
  * Lookup a reference to one of the objects in a repository,
  * given a prefix of its identifier (short id).
  *

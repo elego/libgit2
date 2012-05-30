@@ -77,52 +77,23 @@ static int create_object(git_object **object_out, git_otype type)
 	return 0;
 }
 
-int git_object_lookup_prefix(
+int git_object_lookup_odb_prefix(
 	git_object **object_out,
-	git_repository *repo,
+	git_odb *odb,
 	const git_oid *id,
 	unsigned int len,
 	git_otype type)
 {
 	git_object *object = NULL;
-	git_odb *odb = NULL;
 	git_odb_object *odb_obj;
 	int error = 0;
-
-	assert(repo && object_out && id);
-
-	if (len < GIT_OID_MINPREFIXLEN)
-		return GIT_EAMBIGUOUS;
-
-	error = git_repository_odb__weakptr(&odb, repo);
-	if (error < 0)
-		return error;
 
 	if (len > GIT_OID_HEXSZ)
 		len = GIT_OID_HEXSZ;
 
 	if (len == GIT_OID_HEXSZ) {
-		/* We want to match the full id : we can first look up in the cache,
-		 * since there is no need to check for non ambiguousity
-		 */
-		object = git_cache_get(&repo->objects, id);
-		if (object != NULL) {
-			if (type != GIT_OBJ_ANY && type != object->type) {
-				git_object_free(object);
-				giterr_set(GITERR_ODB, "The given type does not match the type in ODB");
-				return GIT_ENOTFOUND;
-			}
-
-			*object_out = object;
-			return 0;
-		}
-
-		/* Object was not found in the cache, let's explore the backends.
-		 * We could just use git_odb_read_unique_short_oid,
-		 * it is the same cost for packed and loose object backends,
-		 * but it may be much more costly for sqlite and hiredis.
-		 */
-		error = git_odb_read(&odb_obj, odb, id);
+		if ((error = git_odb_read(&odb_obj, odb, id)) < 0)
+			return error;
 	} else {
 		git_oid short_oid;
 
@@ -142,12 +113,9 @@ int git_object_lookup_prefix(
 		 * - We never explore the cache, go right to exploring the backends
 		 * We chose the latter : we explore directly the backends.
 		 */
-		error = git_odb_read_prefix(&odb_obj, odb, &short_oid, len);
+		if ((error = git_odb_read_prefix(&odb_obj, odb, &short_oid, len)) < 0)
+			return error;
 	}
-
-	if (error < 0)
-		return error;
-
 	if (type != GIT_OBJ_ANY && type != odb_obj->raw.type) {
 		git_odb_object_free(odb_obj);
 		giterr_set(GITERR_ODB, "The given type does not match the type on the ODB");
@@ -161,7 +129,6 @@ int git_object_lookup_prefix(
 
 	/* Initialize parent object */
 	git_oid_cpy(&object->cached.oid, &odb_obj->cached.oid);
-	object->repo = repo;
 
 	switch (type) {
 	case GIT_OBJ_COMMIT:
@@ -191,6 +158,60 @@ int git_object_lookup_prefix(
 		return -1;
 	}
 
+	*object_out = object;
+	return 0;
+}
+
+int git_object_lookup_odb(git_object **object_out, git_odb *odb, const git_oid *id, git_otype type) {
+	return git_object_lookup_odb_prefix(object_out, odb, id, GIT_OID_HEXSZ, type);
+}
+
+int git_object_lookup_prefix(
+	git_object **object_out,
+	git_repository *repo,
+	const git_oid *id,
+	unsigned int len,
+	git_otype type)
+{
+	git_object *object = NULL;
+	git_odb *odb = NULL;
+	int error = 0;
+
+	assert(repo && object_out && id);
+
+	if (len < GIT_OID_MINPREFIXLEN)
+		return GIT_EAMBIGUOUS;
+
+	error = git_repository_odb__weakptr(&odb, repo);
+	if (error < 0)
+		return error;
+
+	if (len > GIT_OID_HEXSZ)
+		len = GIT_OID_HEXSZ;
+
+	if (len == GIT_OID_HEXSZ) {
+		/* We want to match the full id : we can first look up in the cache,
+		 * since there is no need to check for ambiguity
+		 */
+		object = git_cache_get(&repo->objects, id);
+		if (object != NULL) {
+			if (type != GIT_OBJ_ANY && type != object->type) {
+				git_object_free(object);
+				giterr_set(GITERR_ODB, "The given type does not match the type in ODB");
+				return GIT_ENOTFOUND;
+			}
+
+			*object_out = object;
+			return 0;
+		}
+	}
+
+	/* The object isn't in the cache or the id is short */
+	if ((error = git_object_lookup_odb_prefix(&object, odb, id, len, type)) < 0)
+		return error;
+
+
+	object->repo = repo;
 	*object_out = git_cache_try_store(&repo->objects, object);
 	return 0;
 }
