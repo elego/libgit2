@@ -63,6 +63,17 @@ GIT_EXTERN(int) git_indexer_stream_finalize(git_indexer_stream *idx, git_indexer
 GIT_EXTERN(const git_oid *) git_indexer_stream_hash(git_indexer_stream *idx);
 
 /**
+ * Create an ODB out of the indexed packfile
+ *
+ * Create an ODB with just the packfile that was just indexed,
+ * allowing you to interrogate that packfile.
+ *
+ * @param odb the new ODB
+ * @param idx the indexer
+ */
+GIT_EXTERN(int) git_indexer_stream_odb(git_odb **odb, git_indexer_stream *idx);
+
+/**
  * Free the indexer and its resources
  *
  * @param idx the indexer to free

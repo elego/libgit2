@@ -10,6 +10,7 @@
 #include "git2/indexer.h"
 #include "git2/object.h"
 #include "git2/oid.h"
+#include "git2/odb_backend.h"
 
 #include "common.h"
 #include "pack.h"
@@ -559,6 +560,35 @@ on_error:
 	p_close(idx->pack->mwf.fd);
 	git_filebuf_cleanup(&idx->index_file);
 	git_buf_free(&filename);
+	return -1;
+}
+
+int git_indexer_stream_odb(git_odb **out, git_indexer_stream *idx)
+{
+	git_odb *odb;
+	git_odb_backend *backend;
+	git_buf buf = GIT_BUF_INIT;
+
+	git_buf_sets(&buf, idx->pack->pack_name);
+	if (index_path_stream(&buf, idx, ".idx") < 0)
+		return -1;
+
+	if (git_odb_new(&odb) < 0)
+		return -1;
+
+	if (git_odb_backend_one_pack(&backend, git_buf_cstr(&buf)) < 0)
+		goto on_error;
+
+	if (git_odb_add_backend(odb, backend, 1) < 0)
+		goto on_error;
+
+	*out = odb;
+	git_buf_free(&buf);
+	return 0;
+
+on_error:
+	git_buf_free(&buf);
+	git_odb_free(odb);
 	return -1;
 }
 
