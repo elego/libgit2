@@ -36,6 +36,20 @@ GIT_INLINE(int) git_commit_lookup(git_commit **commit, git_repository *repo, con
 }
 
 /**
+ * Lookup a commit object from an object database.
+ *
+ * @param commit pointer to the looked up commit
+ * @param odb the odb to use when locating the commit.
+ * @param id identity of the commit to locate. If the object is
+ *		an annotated tag it will be peeled back to the commit.
+ * @return 0 or an error code
+ */
+GIT_INLINE(int) git_commit_lookup_odb(git_commit **commit, git_odb *odb, const git_oid *id)
+{
+	return git_object_lookup_odb((git_object **)commit, odb, id, GIT_OBJ_COMMIT);
+}
+
+/**
  * Lookup a commit object from a repository,
  * given a prefix of its identifier (short id).
  *

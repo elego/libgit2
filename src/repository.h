@@ -71,6 +71,7 @@ typedef enum {
 /** Base git object for inheritance */
 struct git_object {
 	git_cached_obj cached;
+	git_odb *odb;
 	git_repository *repo;
 	git_otype type;
 };

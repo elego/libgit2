@@ -35,6 +35,19 @@ GIT_INLINE(int) git_tree_lookup(git_tree **tree, git_repository *repo, const git
 }
 
 /**
+ * Lookup a tree object from the object database.
+ *
+ * @param tree pointer to the looked up tree
+ * @param odb the odb to use when locating the tree.
+ * @param id identity of the tree to locate.
+ * @return 0 or an error code
+ */
+GIT_INLINE(int) git_tree_lookup_odb(git_tree **tree, git_odb *odb, const git_oid *id)
+{
+	return git_object_lookup_odb((git_object **)tree, odb, id, GIT_OBJ_TREE);
+}
+
+/**
  * Lookup a tree object from the repository,
  * given a prefix of its identifier (short id).
  *

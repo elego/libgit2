@@ -659,9 +659,9 @@ static int tree_frompath(
 	slash_pos = (char *)strchr(treeentry_path->ptr + offset, '/');
 
 	if (slash_pos == NULL)
-		return git_tree_lookup(
+		return git_tree_lookup_odb(
 			parent_out,
-			root->object.repo,
+			root->object.odb,
 			git_object_id((const git_object *)root)
 		);
 
@@ -686,7 +686,7 @@ static int tree_frompath(
 	}
 
 
-	if (git_tree_lookup(&subtree, root->object.repo, &entry->oid) < 0)
+	if (git_tree_lookup_odb(&subtree, root->object.odb, &entry->oid) < 0)
 		return error;
 
 	error = tree_frompath(
@@ -737,8 +737,8 @@ static int tree_walk_post(
 			git_tree *subtree;
 			size_t path_len = git_buf_len(path);
 
-			if ((error = git_tree_lookup(
-				&subtree, tree->object.repo, &entry->oid)) < 0)
+			if ((error = git_tree_lookup_odb(
+				&subtree, tree->object.odb, &entry->oid)) < 0)
 				break;
 
 			/* append the next entry to the path */

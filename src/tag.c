@@ -30,7 +30,7 @@ const git_oid *git_tag_id(git_tag *c)
 int git_tag_target(git_object **target, git_tag *t)
 {
 	assert(t);
-	return git_object_lookup(target, t->object.repo, &t->target, t->type);
+	return git_object_lookup_odb(target, t->object.odb, &t->target, t->type);
 }
 
 const git_oid *git_tag_target_oid(git_tag *t)

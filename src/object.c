@@ -158,6 +158,7 @@ int git_object_lookup_odb_prefix(
 		return -1;
 	}
 
+	object->odb = odb;
 	*object_out = object;
 	return 0;
 }

@@ -300,7 +300,7 @@ GIT_COMMIT_GETTER(const git_oid *, tree_oid, &commit->tree_oid);
 int git_commit_tree(git_tree **tree_out, git_commit *commit)
 {
 	assert(commit);
-	return git_tree_lookup(tree_out, commit->object.repo, &commit->tree_oid);
+	return git_tree_lookup_odb(tree_out, commit->object.odb, &commit->tree_oid);
 }
 
 int git_commit_parent(git_commit **parent, git_commit *commit, unsigned int n)
@@ -314,7 +314,7 @@ int git_commit_parent(git_commit **parent, git_commit *commit, unsigned int n)
 		return GIT_ENOTFOUND;
 	}
 
-	return git_commit_lookup(parent, commit->object.repo, parent_oid);
+	return git_commit_lookup_odb(parent, commit->object.odb, parent_oid);
 }
 
 const git_oid *git_commit_parent_oid(git_commit *commit, unsigned int n)
