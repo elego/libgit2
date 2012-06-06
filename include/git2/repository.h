@@ -36,6 +36,13 @@ GIT_BEGIN_DECL
 GIT_EXTERN(int) git_repository_open(git_repository **repository, const char *path);
 
 /**
+ * Create a fake repository
+ *
+ * Create a fake repository to wrap an object database
+ */
+GIT_EXTERN(int) git_repository_fake(git_repository **repo_out, git_odb *odb);
+
+/**
  * Look for a git repository and copy its path in the given buffer.
  * The lookup start from base_path and walk across parent directories
  * if nothing has been found. The lookup ends when the first repository
