@@ -38,9 +38,13 @@ GIT_EXTERN(int) git_repository_open(git_repository **repository, const char *pat
 /**
  * Create a fake repository
  *
- * Create a fake repository to wrap an object database
+ * Create a fake repository to wrap an object database. This doesn't
+ * have any paths associated with it, so use with care.
+ *
+ * @param repository pointer to the repo
+ * @param odb the object database to wrap
  */
-GIT_EXTERN(int) git_repository_fake(git_repository **repo_out, git_odb *odb);
+GIT_EXTERN(int) git_repository_fake(git_repository **repository, git_odb *odb);
 
 /**
  * Look for a git repository and copy its path in the given buffer.
