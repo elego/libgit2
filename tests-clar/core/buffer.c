@@ -1,5 +1,6 @@
 #include "clar_libgit2.h"
 #include "buffer.h"
+#include "buf_text.h"
 
 #define TESTSTR "Have you seen that? Have you seeeen that??"
 const char *test_string = TESTSTR;
@@ -576,38 +577,153 @@ void test_core_buffer__11(void)
 
 	t.strings = t1;
 	t.count = 3;
-	cl_git_pass(git_buf_common_prefix(&a, &t));
+	cl_git_pass(git_buf_text_common_prefix(&a, &t));
 	cl_assert_equal_s(a.ptr, "");
 
 	t.strings = t2;
 	t.count = 3;
-	cl_git_pass(git_buf_common_prefix(&a, &t));
+	cl_git_pass(git_buf_text_common_prefix(&a, &t));
 	cl_assert_equal_s(a.ptr, "some");
 
 	t.strings = t3;
 	t.count = 3;
-	cl_git_pass(git_buf_common_prefix(&a, &t));
+	cl_git_pass(git_buf_text_common_prefix(&a, &t));
 	cl_assert_equal_s(a.ptr, "");
 
 	t.strings = t4;
 	t.count = 3;
-	cl_git_pass(git_buf_common_prefix(&a, &t));
+	cl_git_pass(git_buf_text_common_prefix(&a, &t));
 	cl_assert_equal_s(a.ptr, "happ");
 
 	t.strings = t5;
 	t.count = 3;
-	cl_git_pass(git_buf_common_prefix(&a, &t));
+	cl_git_pass(git_buf_text_common_prefix(&a, &t));
 	cl_assert_equal_s(a.ptr, "happ");
 
 	t.strings = t6;
 	t.count = 3;
-	cl_git_pass(git_buf_common_prefix(&a, &t));
+	cl_git_pass(git_buf_text_common_prefix(&a, &t));
 	cl_assert_equal_s(a.ptr, "");
 
 	t.strings = t7;
 	t.count = 3;
-	cl_git_pass(git_buf_common_prefix(&a, &t));
+	cl_git_pass(git_buf_text_common_prefix(&a, &t));
 	cl_assert_equal_s(a.ptr, "");
 
 	git_buf_free(&a);
+}
+
+void test_core_buffer__rfind_variants(void)
+{
+	git_buf a = GIT_BUF_INIT;
+	ssize_t len;
+
+	cl_git_pass(git_buf_sets(&a, "/this/is/it/"));
+
+	len = (ssize_t)git_buf_len(&a);
+
+	cl_assert(git_buf_rfind(&a, '/') == len - 1);
+	cl_assert(git_buf_rfind_next(&a, '/') == len - 4);
+
+	cl_assert(git_buf_rfind(&a, 'i') == len - 3);
+	cl_assert(git_buf_rfind_next(&a, 'i') == len - 3);
+
+	cl_assert(git_buf_rfind(&a, 'h') == 2);
+	cl_assert(git_buf_rfind_next(&a, 'h') == 2);
+
+	cl_assert(git_buf_rfind(&a, 'q') == -1);
+	cl_assert(git_buf_rfind_next(&a, 'q') == -1);
+
+	git_buf_free(&a);
+}
+
+void test_core_buffer__puts_escaped(void)
+{
+	git_buf a = GIT_BUF_INIT;
+
+	git_buf_clear(&a);
+	cl_git_pass(git_buf_text_puts_escaped(&a, "this is a test", "", ""));
+	cl_assert_equal_s("this is a test", a.ptr);
+
+	git_buf_clear(&a);
+	cl_git_pass(git_buf_text_puts_escaped(&a, "this is a test", "t", "\\"));
+	cl_assert_equal_s("\\this is a \\tes\\t", a.ptr);
+
+	git_buf_clear(&a);
+	cl_git_pass(git_buf_text_puts_escaped(&a, "this is a test", "i ", "__"));
+	cl_assert_equal_s("th__is__ __is__ a__ test", a.ptr);
+
+	git_buf_clear(&a);
+	cl_git_pass(git_buf_text_puts_escape_regex(&a, "^match\\s*[A-Z]+.*"));
+	cl_assert_equal_s("\\^match\\\\s\\*\\[A-Z\\]\\+\\.\\*", a.ptr);
+
+	git_buf_free(&a);
+}
+
+static void assert_unescape(char *expected, char *to_unescape) {
+	git_buf buf = GIT_BUF_INIT;
+
+	cl_git_pass(git_buf_sets(&buf, to_unescape));
+	git_buf_text_unescape(&buf);
+	cl_assert_equal_s(expected, buf.ptr);
+	cl_assert_equal_sz(strlen(expected), buf.size);
+
+	git_buf_free(&buf);
+}
+
+void test_core_buffer__unescape(void)
+{
+	assert_unescape("Escaped\\", "Es\\ca\\ped\\");
+	assert_unescape("Es\\caped\\", "Es\\\\ca\\ped\\\\");
+	assert_unescape("\\", "\\");
+	assert_unescape("\\", "\\\\");
+	assert_unescape("", "");
+}
+
+void test_core_buffer__base64(void)
+{
+	git_buf buf = GIT_BUF_INIT;
+
+	/*     t  h  i  s
+	 * 0x 74 68 69 73
+     * 0b 01110100 01101000 01101001 01110011
+	 * 0b 011101 000110 100001 101001 011100 110000
+	 * 0x 1d 06 21 29 1c 30
+	 *     d  G  h  p  c  w
+	 */
+	cl_git_pass(git_buf_put_base64(&buf, "this", 4));
+	cl_assert_equal_s("dGhpcw==", buf.ptr);
+
+	git_buf_clear(&buf);
+	cl_git_pass(git_buf_put_base64(&buf, "this!", 5));
+	cl_assert_equal_s("dGhpcyE=", buf.ptr);
+
+	git_buf_clear(&buf);
+	cl_git_pass(git_buf_put_base64(&buf, "this!\n", 6));
+	cl_assert_equal_s("dGhpcyEK", buf.ptr);
+
+	git_buf_free(&buf);
+}
+
+void test_core_buffer__classify_with_utf8(void)
+{
+	char *data0 = "Simple text\n";
+	size_t data0len = 12;
+	char *data1 = "Is that UTF-8 data I see…\nYep!\n";
+	size_t data1len = 31;
+	char *data2 = "Internal NUL!!!\000\n\nI see you!\n";
+	size_t data2len = 29;
+	git_buf b;
+
+	b.ptr = data0; b.size = b.asize = data0len;
+	cl_assert(!git_buf_text_is_binary(&b));
+	cl_assert(!git_buf_text_contains_nul(&b));
+
+	b.ptr = data1; b.size = b.asize = data1len;
+	cl_assert(git_buf_text_is_binary(&b));
+	cl_assert(!git_buf_text_contains_nul(&b));
+
+	b.ptr = data2; b.size = b.asize = data2len;
+	cl_assert(git_buf_text_is_binary(&b));
+	cl_assert(git_buf_text_contains_nul(&b));
 }

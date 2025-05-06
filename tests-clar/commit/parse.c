@@ -149,7 +149,7 @@ void test_commit_parse__signature(void)
    {
       const char *str = passcase->string;
       size_t len = strlen(passcase->string);
-      struct git_signature person = {NULL, NULL, {0, 0}};
+      struct git_signature person = {0};
       cl_git_pass(git_signature__parse(&person, &str, str + len, passcase->header, '\n'));
       cl_assert(strcmp(passcase->name, person.name) == 0);
       cl_assert(strcmp(passcase->email, person.email) == 0);
@@ -162,7 +162,7 @@ void test_commit_parse__signature(void)
    {
       const char *str = failcase->string;
       size_t len = strlen(failcase->string);
-      git_signature person = {NULL, NULL, {0, 0}};
+      git_signature person = {0};
       cl_git_fail(git_signature__parse(&person, &str, str + len, failcase->header, '\n'));
       git__free(person.name); git__free(person.email);
    }
@@ -348,3 +348,30 @@ void test_commit_parse__details0(void) {
 	}
 }
 
+void test_commit_parse__leading_lf(void)
+{
+	git_commit *commit;
+	const char *buffer =
+"tree 1810dff58d8a660512d4832e740f692884338ccd\n\
+parent e90810b8df3e80c413d903f631643c716887138d\n\
+author Vicent Marti <tanoku@gmail.com> 1273848544 +0200\n\
+committer Vicent Marti <tanoku@gmail.com> 1273848544 +0200\n\
+\n\
+\n\
+\n\
+This commit has a few LF at the start of the commit message";
+	const char *message =
+"\n\
+\n\
+This commit has a few LF at the start of the commit message";
+
+	commit = (git_commit*)git__malloc(sizeof(git_commit));
+	memset(commit, 0x0, sizeof(git_commit));
+	commit->object.repo = g_repo;
+
+	cl_git_pass(git_commit__parse_buffer(commit, buffer, strlen(buffer)));
+
+	cl_assert_equal_s(message, git_commit_message(commit));
+
+	git_commit__free(commit);
+}

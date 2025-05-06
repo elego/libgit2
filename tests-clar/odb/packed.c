@@ -12,6 +12,7 @@ void test_odb_packed__initialize(void)
 void test_odb_packed__cleanup(void)
 {
 	git_odb_free(_odb);
+	_odb = NULL;
 }
 
 void test_odb_packed__mass_read(void)
@@ -76,3 +77,8 @@ void test_odb_packed__read_header_1(void)
 	}
 }
 
+void test_odb_packed__clear_cache(void)
+{
+	/* make sure we don't segfault */
+	git_odb_clear_cache(_odb);
+}

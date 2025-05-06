@@ -239,7 +239,7 @@ int main (int argc, char** argv)
   // the tagger (a git_signature - name, email, timestamp), and the tag message.
   git_tag_target((git_object **)&commit, tag);
   tname = git_tag_name(tag);    // "test"
-  ttype = git_tag_type(tag);    // GIT_OBJ_COMMIT (otype enum)
+  ttype = git_tag_target_type(tag);    // GIT_OBJ_COMMIT (otype enum)
   tmessage = git_tag_message(tag); // "tag message\n"
   printf("Tag Message: %s\n", tmessage);
 
@@ -261,8 +261,8 @@ int main (int argc, char** argv)
   git_tree_lookup(&tree, repo, &oid);
 
   // Getting the count of entries in the tree so you can iterate over them if you want to.
-  int cnt = git_tree_entrycount(tree); // 3
-  printf("tree entries: %d\n", cnt);
+  size_t cnt = git_tree_entrycount(tree); // 3
+  printf("tree entries: %d\n", (int)cnt);
 
   entry = git_tree_entry_byindex(tree, 0);
   printf("Entry name: %s\n", git_tree_entry_name(entry)); // "hello.c"
@@ -298,7 +298,7 @@ int main (int argc, char** argv)
   // Note that this buffer may not be contain ASCII data for certain blobs (e.g. binary files):
   // do not consider the buffer a NULL-terminated string, and use the `git_blob_rawsize` attribute to
   // find out its exact size in bytes
-  printf("Blob Size: %ld\n", git_blob_rawsize(blob)); // 8
+  printf("Blob Size: %ld\n", (long)git_blob_rawsize(blob)); // 8
   git_blob_rawcontent(blob); // "content"
 
   // ### Revwalking
@@ -371,7 +371,7 @@ int main (int argc, char** argv)
   // All these properties are exported publicly in the `git_index_entry` struct
   ecount = git_index_entrycount(index);
   for (i = 0; i < ecount; ++i) {
-    git_index_entry *e = git_index_get(index, i);
+    const git_index_entry *e = git_index_get_byindex(index, i);
 
     printf("path: %s\n", e->path);
     printf("mtime: %d\n", (int)e->mtime.seconds);
@@ -405,12 +405,12 @@ int main (int argc, char** argv)
 
     switch (git_reference_type(ref)) {
     case GIT_REF_OID:
-      git_oid_fmt(out, git_reference_oid(ref));
+      git_oid_fmt(out, git_reference_target(ref));
       printf("%s [%s]\n", refname, out);
       break;
 
     case GIT_REF_SYMBOLIC:
-      printf("%s => %s\n", refname, git_reference_target(ref));
+      printf("%s => %s\n", refname, git_reference_symbolic_target(ref));
       break;
     default:
       fprintf(stderr, "Unexpected reference type\n");
@@ -437,10 +437,10 @@ int main (int argc, char** argv)
   // Open a config object so we can read global values from it.
   git_config_open_ondisk(&cfg, "~/.gitconfig");
 
-  git_config_get_int32(cfg, "help.autocorrect", &j);
+  git_config_get_int32(&j, cfg, "help.autocorrect");
   printf("Autocorrect: %d\n", j);
 
-  git_config_get_string(cfg, "user.email", &email);
+  git_config_get_string(&email, cfg, "user.email");
   printf("Email: %s\n", email);
 
   // Finally, when you're done with the repository, you can free it as well.

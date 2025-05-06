@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2009-2012 the libgit2 contributors
+ * Copyright (C) the libgit2 contributors. All rights reserved.
  *
  * This file is part of libgit2, distributed under the GNU GPL v2 with
  * a Linking Exception. For full terms see the included COPYING file.
@@ -40,7 +40,7 @@ static const char *skip_trailing_spaces(const char *buffer_start, const char *bu
 
 static int signature_error(const char *msg)
 {
-	giterr_set(GITERR_INVALID, "Failed to parse signature - %s", msg);
+	giterr_set(GITERR_INVALID, "Failed to process signature - %s", msg);
 	return -1;
 }
 
@@ -72,9 +72,16 @@ static int process_trimming(const char *input, char **storage, const char *input
 	return 0;
 }
 
+static bool contains_angle_brackets(const char *input)
+{
+	if (strchr(input, '<') != NULL)
+		return true;
+
+	return strchr(input, '>') != NULL;
+}
+
 int git_signature_new(git_signature **sig_out, const char *name, const char *email, git_time_t time, int offset)
 {
-	int error;
 	git_signature *p = NULL;
 
 	assert(name && email);
@@ -84,11 +91,18 @@ int git_signature_new(git_signature **sig_out, const char *name, const char *ema
 	p = git__calloc(1, sizeof(git_signature));
 	GITERR_CHECK_ALLOC(p);
 
-	if ((error = process_trimming(name, &p->name, name + strlen(name), 1)) < 0 ||
-		(error = process_trimming(email, &p->email, email + strlen(email), 1)) < 0)
+	if (process_trimming(name, &p->name, name + strlen(name), 1) < 0 ||
+		process_trimming(email, &p->email, email + strlen(email), 1) < 0)
 	{
 		git_signature_free(p);
-		return error;
+		return -1;
+	}
+		
+	if (contains_angle_brackets(p->email) ||
+		contains_angle_brackets(p->name))
+	{
+		git_signature_free(p);
+		return signature_error("Neither `name` nor `email` should contain angle brackets chars.");
 	}
 
 	p->when.time = time;
@@ -111,35 +125,25 @@ int git_signature_now(git_signature **sig_out, const char *name, const char *ema
 {
 	time_t now;
 	time_t offset;
-	struct tm *utc_tm, *local_tm;
+	struct tm *utc_tm;
 	git_signature *sig;
-
-#ifndef GIT_WIN32
-	struct tm _utc, _local;
-#endif
+	struct tm _utc;
 
 	*sig_out = NULL;
 
-	time(&now);
-
-	/**
-	 * On Win32, `gmtime_r` doesn't exist but
-	 * `gmtime` is threadsafe, so we can use that
+	/*
+	 * Get the current time as seconds since the epoch and
+	 * transform that into a tm struct containing the time at
+	 * UTC. Give that to mktime which considers it a local time
+	 * (tm_isdst = -1 asks it to take DST into account) and gives
+	 * us that time as seconds since the epoch. The difference
+	 * between its return value and 'now' is our offset to UTC.
 	 */
-#ifdef GIT_WIN32
-	utc_tm = gmtime(&now);
-	local_tm = localtime(&now);
-#else
-	utc_tm = gmtime_r(&now, &_utc);
-	local_tm = localtime_r(&now, &_local);
-#endif
-
-	offset = mktime(local_tm) - mktime(utc_tm);
+	time(&now);
+	utc_tm = p_gmtime_r(&now, &_utc);
+	utc_tm->tm_isdst = -1;
+	offset = (time_t)difftime(now, mktime(utc_tm));
 	offset /= 60;
-
-	/* mktime takes care of setting tm_isdst correctly */
-	if (local_tm->tm_isdst)
-		offset += 60;
 
 	if (git_signature_new(&sig, name, email, now, (int)offset) < 0)
 		return -1;
@@ -260,7 +264,7 @@ int git_signature__parse(git_signature *sig, const char **buffer_out,
 	const char *line_end, *name_end, *email_end, *tz_start, *time_start;
 	int error = 0;
 
-	memset(sig, 0x0, sizeof(git_signature));
+	memset(sig, 0, sizeof(git_signature));
 
 	if ((line_end = memchr(buffer, ender, buffer_end - buffer)) == NULL)
 		return signature_error("no newline given");

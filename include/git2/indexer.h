@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2009-2012 the libgit2 contributors
+ * Copyright (C) the libgit2 contributors. All rights reserved.
  *
  * This file is part of libgit2, distributed under the GNU GPL v2 with
  * a Linking Exception. For full terms see the included COPYING file.
@@ -16,11 +16,18 @@ GIT_BEGIN_DECL
  * This is passed as the first argument to the callback to allow the
  * user to see the progress.
  */
-typedef struct git_indexer_stats {
-	unsigned int total;
-	unsigned int processed;
-} git_indexer_stats;
+typedef struct git_transfer_progress {
+	unsigned int total_objects;
+	unsigned int indexed_objects;
+	unsigned int received_objects;
+	size_t received_bytes;
+} git_transfer_progress;
 
+
+/**
+ * Type for progress callbacks during indexing
+ */
+typedef void (*git_transfer_progress_callback)(const git_transfer_progress *stats, void *payload);
 
 typedef struct git_indexer git_indexer;
 typedef struct git_indexer_stream git_indexer_stream;
@@ -29,19 +36,25 @@ typedef struct git_indexer_stream git_indexer_stream;
  * Create a new streaming indexer instance
  *
  * @param out where to store the indexer instance
- * @param path to the gitdir (metadata directory)
+ * @param path to the directory where the packfile should be stored
+ * @param progress_cb function to call with progress information
+ * @param progress_payload payload for the progress callback
  */
-GIT_EXTERN(int) git_indexer_stream_new(git_indexer_stream **out, const char *gitdir);
+GIT_EXTERN(int) git_indexer_stream_new(
+		git_indexer_stream **out,
+		const char *path,
+		git_transfer_progress_callback progress_cb,
+		void *progress_cb_payload);
 
 /**
  * Add data to the indexer
  *
  * @param idx the indexer
  * @param data the data to add
- * @param size the size of the data
+ * @param size the size of the data in bytes
  * @param stats stat storage
  */
-GIT_EXTERN(int) git_indexer_stream_add(git_indexer_stream *idx, const void *data, size_t size, git_indexer_stats *stats);
+GIT_EXTERN(int) git_indexer_stream_add(git_indexer_stream *idx, const void *data, size_t size, git_transfer_progress *stats);
 
 /**
  * Finalize the pack and index
@@ -50,7 +63,7 @@ GIT_EXTERN(int) git_indexer_stream_add(git_indexer_stream *idx, const void *data
  *
  * @param idx the indexer
  */
-GIT_EXTERN(int) git_indexer_stream_finalize(git_indexer_stream *idx, git_indexer_stats *stats);
+GIT_EXTERN(int) git_indexer_stream_finalize(git_indexer_stream *idx, git_transfer_progress *stats);
 
 /**
  * Get the packfile's hash
@@ -60,18 +73,7 @@ GIT_EXTERN(int) git_indexer_stream_finalize(git_indexer_stream *idx, git_indexer
  *
  * @param idx the indexer instance
  */
-GIT_EXTERN(const git_oid *) git_indexer_stream_hash(git_indexer_stream *idx);
-
-/**
- * Create an ODB out of the indexed packfile
- *
- * Create an ODB with just the packfile that was just indexed,
- * allowing you to interrogate that packfile.
- *
- * @param odb the new ODB
- * @param idx the indexer
- */
-GIT_EXTERN(int) git_indexer_stream_odb(git_odb **odb, git_indexer_stream *idx);
+GIT_EXTERN(const git_oid *) git_indexer_stream_hash(const git_indexer_stream *idx);
 
 /**
  * Free the indexer and its resources
@@ -98,7 +100,7 @@ GIT_EXTERN(int) git_indexer_new(git_indexer **out, const char *packname);
  * @param idx the indexer instance
  * @param stats storage for the running state
  */
-GIT_EXTERN(int) git_indexer_run(git_indexer *idx, git_indexer_stats *stats);
+GIT_EXTERN(int) git_indexer_run(git_indexer *idx, git_transfer_progress *stats);
 
 /**
  * Write the index file to disk.
@@ -118,7 +120,7 @@ GIT_EXTERN(int) git_indexer_write(git_indexer *idx);
  *
  * @param idx the indexer instance
  */
-GIT_EXTERN(const git_oid *) git_indexer_hash(git_indexer *idx);
+GIT_EXTERN(const git_oid *) git_indexer_hash(const git_indexer *idx);
 
 /**
  * Free the indexer and its resources

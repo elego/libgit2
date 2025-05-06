@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2009-2012 the libgit2 contributors
+ * Copyright (C) the libgit2 contributors. All rights reserved.
  *
  * This file is part of libgit2, distributed under the GNU GPL v2 with
  * a Linking Exception. For full terms see the included COPYING file.
@@ -45,35 +45,6 @@ GIT_EXTERN(int) git_object_lookup(
 		git_otype type);
 
 /**
- * Same as git_object_lookup() but with an ODB instead of a repo
- */
-GIT_EXTERN(int) git_object_lookup_odb(
-		git_object **object,
-		git_odb *odb,
-		const git_oid *id,
-		git_otype type);
-
-
-/**
- * Lookup a reference to one of the objects in an odb
- *
- * This is the same as git_object_lookup_prefix() but it allows you to
- * query an ODB directory, without having to use a repository.
- *
- * @param object pointer to the looked-up object
- * @param odb the odb in which to look up the object
- * @param id the unique identifier for the object
- * @param type the type of the object
- * @return 0 or GIT_ENOTFOUND;
- */
-GIT_EXTERN(int) git_object_lookup_odb_prefix(
-		git_object **object_out,
-		git_odb *odb,
-		const git_oid *id,
-		unsigned int len,
-		git_otype type);
-
-/**
  * Lookup a reference to one of the objects in a repository,
  * given a prefix of its identifier (short id).
  *
@@ -104,7 +75,7 @@ GIT_EXTERN(int) git_object_lookup_prefix(
 		git_object **object_out,
 		git_repository *repo,
 		const git_oid *id,
-		unsigned int len,
+		size_t len,
 		git_otype type);
 
 /**
@@ -195,6 +166,27 @@ GIT_EXTERN(int) git_object_typeisloose(git_otype type);
  * @return size in bytes of the object
  */
 GIT_EXTERN(size_t) git_object__size(git_otype type);
+
+/**
+ * Recursively peel an object until an object of the specified type is met.
+ *
+ * The retrieved `peeled` object is owned by the repository and should be
+ * closed with the `git_object_free` method.
+ *
+ * If you pass `GIT_OBJ_ANY` as the target type, then the object will be
+ * peeled until the type changes (e.g. a tag will be chased until the
+ * referenced object is no longer a tag).
+ *
+ * @param peeled Pointer to the peeled git_object
+ * @param object The object to be processed
+ * @param target_type The type of the requested object (GIT_OBJ_COMMIT,
+ * GIT_OBJ_TAG, GIT_OBJ_TREE, GIT_OBJ_BLOB or GIT_OBJ_ANY).
+ * @return 0 on success, GIT_EAMBIGUOUS, GIT_ENOTFOUND or an error code
+ */
+GIT_EXTERN(int) git_object_peel(
+	git_object **peeled,
+	const git_object *object,
+	git_otype target_type);
 
 /** @} */
 GIT_END_DECL

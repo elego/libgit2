@@ -5,10 +5,6 @@
 #include "git2/tree.h"
 #include <ctype.h>
 
-const char *git_attr__true  = "[internal]__TRUE__";
-const char *git_attr__false = "[internal]__FALSE__";
-const char *git_attr__unset = "[internal]__UNSET__";
-
 static int sort_by_hash_and_name(const void *a_raw, const void *b_raw);
 static void git_attr_rule__clear(git_attr_rule *rule);
 
@@ -57,12 +53,14 @@ fail:
 }
 
 int git_attr_file__parse_buffer(
-	git_repository *repo, const char *buffer, git_attr_file *attrs)
+	git_repository *repo, void *parsedata, const char *buffer, git_attr_file *attrs)
 {
 	int error = 0;
 	const char *scan = NULL;
 	char *context = NULL;
 	git_attr_rule *rule = NULL;
+
+	GIT_UNUSED(parsedata);
 
 	assert(buffer && attrs);
 
@@ -127,7 +125,7 @@ int git_attr_file__new_and_load(
 
 	if (!(error = git_futils_readbuffer(&content, path)))
 		error = git_attr_file__parse_buffer(
-			NULL, git_buf_cstr(&content), *attrs_ptr);
+			NULL, NULL, git_buf_cstr(&content), *attrs_ptr);
 
 	git_buf_free(&content);
 
@@ -183,7 +181,7 @@ int git_attr_file__lookup_one(
 	const char *attr,
 	const char **value)
 {
-	unsigned int i;
+	size_t i;
 	git_attr_name name;
 	git_attr_rule *rule;
 
@@ -211,16 +209,17 @@ bool git_attr_fnmatch__match(
 	const git_attr_path *path)
 {
 	int fnm;
+	int icase_flags = (match->flags & GIT_ATTR_FNMATCH_ICASE) ? FNM_CASEFOLD : 0;
 
 	if (match->flags & GIT_ATTR_FNMATCH_DIRECTORY && !path->is_dir)
 		return false;
 
 	if (match->flags & GIT_ATTR_FNMATCH_FULLPATH)
-		fnm = p_fnmatch(match->pattern, path->path, FNM_PATHNAME);
+		fnm = p_fnmatch(match->pattern, path->path, FNM_PATHNAME | icase_flags);
 	else if (path->is_dir)
-		fnm = p_fnmatch(match->pattern, path->basename, FNM_LEADING_DIR);
+		fnm = p_fnmatch(match->pattern, path->basename, FNM_LEADING_DIR | icase_flags);
 	else
-		fnm = p_fnmatch(match->pattern, path->basename, 0);
+		fnm = p_fnmatch(match->pattern, path->basename, icase_flags);
 
 	return (fnm == FNM_NOMATCH) ? false : true;
 }
@@ -254,18 +253,15 @@ git_attr_assignment *git_attr_rule__lookup_assignment(
 int git_attr_path__init(
 	git_attr_path *info, const char *path, const char *base)
 {
+	ssize_t root;
+
 	/* build full path as best we can */
 	git_buf_init(&info->full, 0);
 
-	if (base != NULL && git_path_root(path) < 0) {
-		if (git_buf_joinpath(&info->full, base, path) < 0)
-			return -1;
-		info->path = info->full.ptr + strlen(base);
-	} else {
-		if (git_buf_sets(&info->full, path) < 0)
-			return -1;
-		info->path = info->full.ptr;
-	}
+	if (git_path_join_unrooted(&info->full, path, base, &root) < 0)
+		return -1;
+
+	info->path = info->full.ptr + root;
 
 	/* remove trailing slashes */
 	while (info->full.size > 0) {
@@ -426,17 +422,7 @@ int git_attr_fnmatch__parse(
 		return -1;
 	} else {
 		/* strip '\' that might have be used for internal whitespace */
-		char *to = spec->pattern;
-		for (scan = spec->pattern; *scan; to++, scan++) {
-			if (*scan == '\\')
-				scan++; /* skip '\' but include next char */
-			if (to != scan)
-				*to = *scan;
-		}
-		if (to != scan) {
-			*to = '\0';
-			spec->length = (to - spec->pattern);
-		}
+		spec->length = git__unescape(spec->pattern);
 	}
 
 	return 0;

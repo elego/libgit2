@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2009-2012 the libgit2 contributors
+ * Copyright (C) the libgit2 contributors. All rights reserved.
  *
  * This file is part of libgit2, distributed under the GNU GPL v2 with
  * a Linking Exception. For full terms see the included COPYING file.
@@ -77,58 +77,28 @@ static int create_object(git_object **object_out, git_otype type)
 	return 0;
 }
 
-int git_object_lookup_odb_prefix(
+int git_object__from_odb_object(
 	git_object **object_out,
-	git_odb *odb,
-	const git_oid *id,
-	unsigned int len,
+	git_repository *repo,
+	git_odb_object *odb_obj,
 	git_otype type)
 {
+	int error;
 	git_object *object = NULL;
-	git_odb_object *odb_obj;
-	int error = 0;
 
-	if (len > GIT_OID_HEXSZ)
-		len = GIT_OID_HEXSZ;
-
-	if (len == GIT_OID_HEXSZ) {
-		if ((error = git_odb_read(&odb_obj, odb, id)) < 0)
-			return error;
-	} else {
-		git_oid short_oid;
-
-		/* We copy the first len*4 bits from id and fill the remaining with 0s */
-		memcpy(short_oid.id, id->id, (len + 1) / 2);
-		if (len % 2)
-			short_oid.id[len / 2] &= 0xF0;
-		memset(short_oid.id + (len + 1) / 2, 0, (GIT_OID_HEXSZ - len) / 2);
-
-		/* If len < GIT_OID_HEXSZ (a strict short oid was given), we have
-		 * 2 options :
-		 * - We always search in the cache first. If we find that short oid is
-		 *	ambiguous, we can stop. But in all the other cases, we must then
-		 *	explore all the backends (to find an object if there was match,
-		 *	or to check that oid is not ambiguous if we have found 1 match in
-		 *	the cache)
-		 * - We never explore the cache, go right to exploring the backends
-		 * We chose the latter : we explore directly the backends.
-		 */
-		if ((error = git_odb_read_prefix(&odb_obj, odb, &short_oid, len)) < 0)
-			return error;
-	}
 	if (type != GIT_OBJ_ANY && type != odb_obj->raw.type) {
-		git_odb_object_free(odb_obj);
-		giterr_set(GITERR_ODB, "The given type does not match the type on the ODB");
+		giterr_set(GITERR_INVALID, "The requested type does not match the type in the ODB");
 		return GIT_ENOTFOUND;
 	}
 
 	type = odb_obj->raw.type;
 
-	if (create_object(&object, type) < 0)
-		return -1;
+	if ((error = create_object(&object, type)) < 0)
+		return error;
 
 	/* Initialize parent object */
 	git_oid_cpy(&object->cached.oid, &odb_obj->cached.oid);
+	object->repo = repo;
 
 	switch (type) {
 	case GIT_OBJ_COMMIT:
@@ -151,31 +121,24 @@ int git_object_lookup_odb_prefix(
 		break;
 	}
 
-	git_odb_object_free(odb_obj);
-
-	if (error < 0) {
+	if (error < 0)
 		git_object__free(object);
-		return -1;
-	}
+	else
+		*object_out = git_cache_try_store(&repo->objects, object);
 
-	object->odb = odb;
-	*object_out = object;
-	return 0;
-}
-
-int git_object_lookup_odb(git_object **object_out, git_odb *odb, const git_oid *id, git_otype type) {
-	return git_object_lookup_odb_prefix(object_out, odb, id, GIT_OID_HEXSZ, type);
+	return error;
 }
 
 int git_object_lookup_prefix(
 	git_object **object_out,
 	git_repository *repo,
 	const git_oid *id,
-	unsigned int len,
+	size_t len,
 	git_otype type)
 {
 	git_object *object = NULL;
 	git_odb *odb = NULL;
+	git_odb_object *odb_obj;
 	int error = 0;
 
 	assert(repo && object_out && id);
@@ -192,29 +155,56 @@ int git_object_lookup_prefix(
 
 	if (len == GIT_OID_HEXSZ) {
 		/* We want to match the full id : we can first look up in the cache,
-		 * since there is no need to check for ambiguity
+		 * since there is no need to check for non ambiguousity
 		 */
 		object = git_cache_get(&repo->objects, id);
 		if (object != NULL) {
 			if (type != GIT_OBJ_ANY && type != object->type) {
 				git_object_free(object);
-				giterr_set(GITERR_ODB, "The given type does not match the type in ODB");
+				giterr_set(GITERR_INVALID, "The requested type does not match the type in ODB");
 				return GIT_ENOTFOUND;
 			}
 
 			*object_out = object;
 			return 0;
 		}
+
+		/* Object was not found in the cache, let's explore the backends.
+		 * We could just use git_odb_read_unique_short_oid,
+		 * it is the same cost for packed and loose object backends,
+		 * but it may be much more costly for sqlite and hiredis.
+		 */
+		error = git_odb_read(&odb_obj, odb, id);
+	} else {
+		git_oid short_oid;
+
+		/* We copy the first len*4 bits from id and fill the remaining with 0s */
+		memcpy(short_oid.id, id->id, (len + 1) / 2);
+		if (len % 2)
+			short_oid.id[len / 2] &= 0xF0;
+		memset(short_oid.id + (len + 1) / 2, 0, (GIT_OID_HEXSZ - len) / 2);
+
+		/* If len < GIT_OID_HEXSZ (a strict short oid was given), we have
+		 * 2 options :
+		 * - We always search in the cache first. If we find that short oid is
+		 *	ambiguous, we can stop. But in all the other cases, we must then
+		 *	explore all the backends (to find an object if there was match,
+		 *	or to check that oid is not ambiguous if we have found 1 match in
+		 *	the cache)
+		 * - We never explore the cache, go right to exploring the backends
+		 * We chose the latter : we explore directly the backends.
+		 */
+		error = git_odb_read_prefix(&odb_obj, odb, &short_oid, len);
 	}
 
-	/* The object isn't in the cache or the id is short */
-	if ((error = git_object_lookup_odb_prefix(&object, odb, id, len, type)) < 0)
+	if (error < 0)
 		return error;
 
+	error = git_object__from_odb_object(object_out, repo, odb_obj, type);
 
-	object->repo = repo;
-	*object_out = git_cache_try_store(&repo->objects, object);
-	return 0;
+	git_odb_object_free(odb_obj);
+
+	return error;
 }
 
 int git_object_lookup(git_object **object_out, git_repository *repo, const git_oid *id, git_otype type) {
@@ -314,42 +304,95 @@ size_t git_object__size(git_otype type)
 	return git_objects_table[type].size;
 }
 
-int git_object__resolve_to_type(git_object **obj, git_otype type)
+static int dereference_object(git_object **dereferenced, git_object *obj)
 {
-	int error = 0;
-	git_object *scan, *next;
+	git_otype type = git_object_type(obj);
 
-	if (type == GIT_OBJ_ANY)
-		return 0;
+	switch (type) {
+	case GIT_OBJ_COMMIT:
+		return git_commit_tree((git_tree **)dereferenced, (git_commit*)obj);
 
-	scan = *obj;
+	case GIT_OBJ_TAG:
+		return git_tag_target(dereferenced, (git_tag*)obj);
 
-	while (!error && scan && git_object_type(scan) != type) {
+	case GIT_OBJ_BLOB:
+		return GIT_ENOTFOUND;
 
-		switch (git_object_type(scan)) {
-		case GIT_OBJ_COMMIT:
-		{
-			git_tree *tree = NULL;
-			error = git_commit_tree(&tree, (git_commit *)scan);
-			next = (git_object *)tree;
-			break;
-		}
+	case GIT_OBJ_TREE:
+		return GIT_EAMBIGUOUS;
 
-		case GIT_OBJ_TAG:
-			error = git_tag_target(&next, (git_tag *)scan);
-			break;
-
-		default:
-			giterr_set(GITERR_REFERENCE, "Object does not resolve to type");
-			error = -1;
-			next = NULL;
-			break;
-		}
-
-		git_object_free(scan);
-		scan = next;
+	default:
+		return GIT_EINVALIDSPEC;
 	}
+}
 
-	*obj = scan;
+static int peel_error(int error, const git_oid *oid, git_otype type)
+{
+	const char *type_name;
+	char hex_oid[GIT_OID_HEXSZ + 1];
+
+	type_name = git_object_type2string(type);
+
+	git_oid_fmt(hex_oid, oid);
+	hex_oid[GIT_OID_HEXSZ] = '\0';
+
+	giterr_set(GITERR_OBJECT, "The git_object of id '%s' can not be "
+		"successfully peeled into a %s (git_otype=%i).", hex_oid, type_name, type);
+
 	return error;
 }
+
+int git_object_peel(
+	git_object **peeled,
+	const git_object *object,
+	git_otype target_type)
+{
+	git_object *source, *deref = NULL;
+	int error;
+
+	if (target_type != GIT_OBJ_TAG && 
+		target_type != GIT_OBJ_COMMIT && 
+		target_type != GIT_OBJ_TREE && 
+		target_type != GIT_OBJ_BLOB && 
+		target_type != GIT_OBJ_ANY)
+			return GIT_EINVALIDSPEC;
+
+	assert(object && peeled);
+
+	if (git_object_type(object) == target_type)
+		return git_object__dup(peeled, (git_object *)object);
+
+	source = (git_object *)object;
+
+	while (!(error = dereference_object(&deref, source))) {
+
+		if (source != object)
+			git_object_free(source);
+
+		if (git_object_type(deref) == target_type) {
+			*peeled = deref;
+			return 0;
+		}
+
+		if (target_type == GIT_OBJ_ANY &&
+			git_object_type(deref) != git_object_type(object))
+		{
+			*peeled = deref;
+			return 0;
+		}
+
+		source = deref;
+		deref = NULL;
+	}
+
+	if (source != object)
+		git_object_free(source);
+
+	git_object_free(deref);
+
+	if (error)
+		error = peel_error(error, git_object_id(object), target_type);
+
+	return error;
+}
+

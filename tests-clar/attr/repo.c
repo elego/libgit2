@@ -113,6 +113,22 @@ static int count_attrs(
 	return 0;
 }
 
+static int cancel_iteration(
+	const char *name,
+	const char *value,
+	void *payload)
+{
+	GIT_UNUSED(name);
+	GIT_UNUSED(value);
+
+	*((int *)payload) -= 1;
+
+	if (*((int *)payload) < 0)
+		return -1;
+
+	return 0;
+}
+
 void test_attr_repo__foreach(void)
 {
 	int count;
@@ -131,6 +147,12 @@ void test_attr_repo__foreach(void)
 	cl_git_pass(git_attr_foreach(g_repo, 0, "sub/subdir_test2.txt",
 		&count_attrs, &count));
 	cl_assert(count == 6); /* repoattr, rootattr, subattr, reposub, negattr, another */
+
+	count = 2;
+	cl_assert_equal_i(
+		GIT_EUSER, git_attr_foreach(
+			g_repo, 0, "sub/subdir_test1", &cancel_iteration, &count)
+	);
 }
 
 void test_attr_repo__manpage_example(void)
@@ -245,15 +267,15 @@ static void add_to_workdir(const char *filename, const char *content)
 static void assert_proper_normalization(git_index *index, const char *filename, const char *expected_sha)
 {
 	int index_pos;
-	git_index_entry *entry;
+	const git_index_entry *entry;
 
 	add_to_workdir(filename, CONTENT);
-	cl_git_pass(git_index_add(index, filename, 0));
+	cl_git_pass(git_index_add_from_workdir(index, filename));
 
 	index_pos = git_index_find(index, filename);
 	cl_assert(index_pos >= 0);
 
-	entry = git_index_get(index, index_pos);
+	entry = git_index_get_byindex(index, index_pos);
 	cl_assert_equal_i(0, git_oid_streq(&entry->oid, expected_sha));
 }
 

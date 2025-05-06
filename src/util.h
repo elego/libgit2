@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2009-2012 the libgit2 contributors
+ * Copyright (C) the libgit2 contributors. All rights reserved.
  *
  * This file is part of libgit2, distributed under the GNU GPL v2 with
  * a Linking Exception. For full terms see the included COPYING file.
@@ -42,12 +42,11 @@ GIT_INLINE(char *) git__strdup(const char *str)
 
 GIT_INLINE(char *) git__strndup(const char *str, size_t n)
 {
-	size_t length;
+	size_t length = 0;
 	char *ptr;
 
-	length = strlen(str);
-	if (n < length)
-		length = n;
+	while (length < n && str[length])
+		++length;
 
 	ptr = (char*)malloc(length + 1);
 	if (!ptr) {
@@ -55,7 +54,9 @@ GIT_INLINE(char *) git__strndup(const char *str, size_t n)
 		return NULL;
 	}
 
-	memcpy(ptr, str, length);
+	if (length)
+		memcpy(ptr, str, length);
+
 	ptr[length] = '\0';
 
 	return ptr;
@@ -70,8 +71,20 @@ GIT_INLINE(void *) git__realloc(void *ptr, size_t size)
 
 #define git__free(ptr) free(ptr)
 
+#define STRCMP_CASESELECT(IGNORE_CASE, STR1, STR2) \
+	((IGNORE_CASE) ? strcasecmp((STR1), (STR2)) : strcmp((STR1), (STR2)))
+
+#define CASESELECT(IGNORE_CASE, ICASE, CASE) \
+	((IGNORE_CASE) ? (ICASE) : (CASE))
+
 extern int git__prefixcmp(const char *str, const char *prefix);
+extern int git__prefixcmp_icase(const char *str, const char *prefix);
 extern int git__suffixcmp(const char *str, const char *suffix);
+
+GIT_INLINE(int) git__signum(int val)
+{
+	return ((val > 0) - (val < 0));
+}
 
 extern int git__strtol32(int32_t *n, const char *buff, const char **end_buf, int base);
 extern int git__strtol64(int64_t *n, const char *buff, const char **end_buf, int base);
@@ -94,6 +107,7 @@ GIT_INLINE(int) git__is_sizet(git_off_t p)
 #endif
 
 extern char *git__strtok(char **end, const char *sep);
+extern char *git__strsep(char **end, const char *sep);
 
 extern void git__strntolower(char *str, size_t len);
 extern void git__strtolower(char *str);
@@ -120,6 +134,11 @@ extern int git__bsearch(
 	size_t *position);
 
 extern int git__strcmp_cb(const void *a, const void *b);
+
+extern int git__strcmp(const char *a, const char *b);
+extern int git__strcasecmp(const char *a, const char *b);
+extern int git__strncmp(const char *a, const char *b, size_t sz);
+extern int git__strncasecmp(const char *a, const char *b, size_t sz);
 
 typedef struct {
 	short refcount;
@@ -204,9 +223,14 @@ GIT_INLINE(bool) git__isalpha(int c)
     return ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z'));
 }
 
+GIT_INLINE(bool) git__isdigit(int c)
+{
+    return (c >= '0' && c <= '9');
+}
+
 GIT_INLINE(bool) git__isspace(int c)
 {
-    return (c == ' ' || c == '\t' || c == '\n' || c == '\f' || c == '\r' || c == '\v');
+    return (c == ' ' || c == '\t' || c == '\n' || c == '\f' || c == '\r' || c == '\v' || c == 0x85 /* Unicode CR+LF */);
 }
 
 GIT_INLINE(bool) git__iswildcard(int c)
@@ -222,5 +246,24 @@ GIT_INLINE(bool) git__iswildcard(int c)
  * Valid values for false are: 'false', 'no', 'off'
  */
 extern int git__parse_bool(int *out, const char *value);
+
+/*
+ * Parse a string into a value as a git_time_t.
+ *
+ * Sample valid input:
+ * - "yesterday"
+ * - "July 17, 2003"
+ * - "2003-7-17 08:23"
+ */
+int git__date_parse(git_time_t *out, const char *date);
+
+/*
+ * Unescapes a string in-place.
+ * 
+ * Edge cases behavior:
+ * - "jackie\" -> "jacky\"
+ * - "chan\\" -> "chan\"
+ */
+extern size_t git__unescape(char *str);
 
 #endif /* INCLUDE_util_h__ */
