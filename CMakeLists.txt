@@ -12,7 +12,7 @@
 # > cmake --build . --target install
 
 PROJECT(libgit2 C)
-CMAKE_MINIMUM_REQUIRED(VERSION 2.6)
+CMAKE_MINIMUM_REQUIRED(VERSION 2.6...3.28)
 
 # Build options
 #
